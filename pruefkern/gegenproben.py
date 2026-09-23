@@ -374,6 +374,45 @@ def main():
             alle_rot = False
         print()
 
+    # --- Gegenprobe am Pruefprotokoll -----------------------------------
+    # Die Faelle oben beschaedigen die Seite. Dieser Fall beschaedigt nichts an
+    # der Seite, sondern aendert das Profil. Ein vorhandenes, gruenes Protokoll
+    # muss dadurch ungueltig werden: am Profil haengt, was ueberhaupt geprueft
+    # wird. Ohne diese Bindung bliebe ein gruenes Protokoll stehen, waehrend
+    # zum Beispiel eine erlaubte Aussenanfrage zurueckgenommen wurde.
+    print("=" * 74)
+    print("GEGENPROBE 13 geaendertes Profil bei unveraenderter Seite")
+    prot_rel = EINTRAG.get("protokoll")
+    pruefer_js = BROWSERPRUEFER
+    if not prot_rel:
+        print("   entfaellt, das Profil nennt keinen Ablageort fuer das Protokoll")
+    elif not os.path.exists(os.path.join(PROJEKT, prot_rel)):
+        print("   entfaellt, es gibt noch kein Protokoll unter %s" % prot_rel)
+    else:
+        unter = os.path.join(ordner, "13")
+        os.makedirs(unter, exist_ok=True)
+        # Das Profil um eine Kleinigkeit veraendern, inhaltlich folgenlos.
+        roh_profil = io.open(PROFIL, encoding="utf-8").read()
+        profil_kopie = os.path.join(unter, os.path.basename(PROFIL))
+        io.open(profil_kopie, "w", encoding="utf-8").write(
+            roh_profil.rstrip("\n") + "\n\n")
+        pruefwerkzeug = os.path.join(HIER, "pruefe_protokoll.py")
+        r = subprocess.run([sys.executable, pruefwerkzeug,
+                            SEITE, os.path.join(PROJEKT, prot_rel),
+                            pruefer_js, profil_kopie],
+                           capture_output=True, text=True)
+        befunde = [l.strip() for l in r.stdout.splitlines() if "BEFUND" in l]
+        print("   veraendert: das Profil, die Seite bleibt unberuehrt")
+        for b in befunde[:4]:
+            print("   " + b)
+        print("   Rueckgabecode: %d" % r.returncode)
+        gut = r.returncode == 1 and any("Profils" in b for b in befunde)
+        print("   %s" % ("richtig, das Protokoll gilt nicht mehr" if gut else
+                         "FALSCH, das Protokoll bleibt trotz geaendertem Profil gueltig"))
+        if not gut:
+            alle_rot = False
+    print()
+
     print("=" * 74)
     if alle_rot:
         print("ALLE ANWENDBAREN GEGENPROBEN HABEN SICH RICHTIG VERHALTEN.")

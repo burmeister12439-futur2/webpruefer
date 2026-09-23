@@ -38,6 +38,12 @@ const sha = crypto.createHash('sha256').update(fs.readFileSync(seite)).digest('h
 // Der Pruefer haelt auch seinen eigenen SHA fest. Sonst bliebe ein altes gruenes
 // Protokoll gueltig, waehrend sich der Pruefer darunter geaendert hat.
 const pruefer_sha = crypto.createHash('sha256').update(fs.readFileSync(__filename)).digest('hex');
+// Auch das Profil bekommt einen Fingerabdruck. Es legt fest, was ueberhaupt
+// geprueft wird: Sollbestand, Bedienteile, Bedienablauf, erlaubte
+// Aussenanfragen. Wird daran etwas geaendert, sagt ein altes Protokoll nichts
+// mehr ueber den jetzt geltenden Pruefumfang aus, auch wenn Seite und Pruefer
+// unveraendert sind. Von Klaus am 23.09.2026 verlangt.
+const profil_sha = crypto.createHash('sha256').update(fs.readFileSync(profilPfad)).digest('hex');
 
 const befunde = [];
 const zeile = (s) => console.log(s);
@@ -81,6 +87,7 @@ const befund = (s) => { console.log('   BEFUND  ' + s); befunde.push(s); };
   zeile('BROWSERPRUEFUNG  ' + seite);
   zeile('SHA-256 Seite    ' + sha);
   zeile('SHA-256 Pruefer  ' + pruefer_sha);
+  zeile('SHA-256 Profil   ' + profil_sha);
   zeile('='.repeat(74));
 
   zeile('\n1 Konsole und Skriptfehler');
@@ -354,8 +361,8 @@ const befund = (s) => { console.log('   BEFUND  ' + s); befunde.push(s); };
 
   if (protokoll) {
     fs.writeFileSync(protokoll, JSON.stringify({
-      _zweck: 'Pruefprotokoll der Browserpruefung. Der Push-Haken vergleicht sha256 mit der Seite und pruefer_sha256 mit pruefe_browser.js. Aendert sich eines von beiden, wird dieses Protokoll ungueltig und die Browserpruefung muss neu laufen.',
-      seite: path.basename(seite), sha256: sha, pruefer_sha256: pruefer_sha, ergebnis: ergebnis,
+      _zweck: 'Pruefprotokoll der Browserpruefung. Der Push-Haken vergleicht sha256 mit der Seite, pruefer_sha256 mit pruefe_browser.js und profil_sha256 mit dem _pruefprofil.json. Aendert sich eines der drei, wird dieses Protokoll ungueltig und die Browserpruefung muss neu laufen.',
+      seite: path.basename(seite), sha256: sha, pruefer_sha256: pruefer_sha, profil_sha256: profil_sha, ergebnis: ergebnis,
       befunde: befunde, zeitpunkt: new Date().toISOString(),
       werkzeug: 'pruefe_browser.js'
     }, null, 1) + '\n', 'utf-8');

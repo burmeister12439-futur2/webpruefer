@@ -52,7 +52,8 @@ def main(projekt, profilpfad):
             continue
         r = subprocess.run([sys.executable, os.path.join(KERN, "pruefe_protokoll.py"),
                             seite, os.path.join(projekt, prot),
-                            os.path.join(KERN, "pruefe_browser.js")])
+                            os.path.join(KERN, "pruefe_browser.js"),
+                            profilpfad])
         if r.returncode != 0:
             fehler = 1
 
