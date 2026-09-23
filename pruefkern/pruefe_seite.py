@@ -170,8 +170,12 @@ def pruefe(pfad, sollpfad):
     for t, z, _ in s.stapel: befund("<%s> aus Zeile %d wird nie geschlossen" % (t, z), "Verschachtelung")
     if not s.fehler and not s.stapel: print("   in Ordnung, der Stapel geht auf")
 
-    antwort = [f for f in s.felder if f["tag"] == "textarea"]
     bedien_soll = soll.get("bedienfelder", {})
+    # Ein Bedienfeld kann auch ein textarea sein, etwa die Eingabe eines
+    # Bedienablaufs. Es ist dann kein Antwortfeld und braucht kein data-frage.
+    # Sichtbarkeit im Ausgangszustand und richtiges Verhalten nach einer
+    # Interaktion sind zweierlei; das Verhalten prueft die Browserpruefung.
+    antwort = [f for f in s.felder if f["tag"] == "textarea" and f["id"] not in bedien_soll]
 
     print("\n2 Sichtbarkeit ohne Klick")
     ok2 = True
@@ -182,12 +186,18 @@ def pruefe(pfad, sollpfad):
         if f["versteckt"]:
             befund("Antwortfeld %s in Zeile %d ist versteckt: %s"
                    % (f["id"] or "(ohne id)", f["zeile"], f["versteckt"]), "Sichtbarkeit"); ok2 = False
+    for f in s.felder:
+        if f["id"] in bedien_soll and (f["fenster"] or f["versteckt"]):
+            grund = ("steckt im geschlossenen Fenster „%s“" % f["fenster"]) if f["fenster"] \
+                    else ("ist versteckt: %s" % f["versteckt"])
+            befund("Bedienfeld %s in Zeile %d %s" % (f["id"], f["zeile"], grund), "Sichtbarkeit"); ok2 = False
     for b in s.bloecke:
         if b.get("h2"): continue
         if b["fenster"]:
             befund("Ueberschrift „%s“ in Zeile %d steckt im geschlossenen Fenster „%s“"
                    % (b["text"], b["zeile"], b["fenster"]), "Sichtbarkeit"); ok2 = False
-    if ok2: print("   in Ordnung, alle %d Antwortfelder und alle Fragenbloecke sind ohne Klick sichtbar" % len(antwort))
+    if ok2: print("   in Ordnung, %d Antwortfelder, %d Bedienfelder und alle Fragenbloecke sind ohne Klick sichtbar"
+                  % (len(antwort), len(bedien_soll)))
 
     print("\n3 Verdrahtung")
     ok3 = True

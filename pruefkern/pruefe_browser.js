@@ -49,6 +49,26 @@ const befund = (s) => { console.log('   BEFUND  ' + s); befunde.push(s); };
 
   // --- 1 Konsole und Skriptfehler -------------------------------------
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+
+  // Keine echte Anfrage ins Netz. Die Seite wird aus der Datei geladen; alles,
+  // was darueber hinaus hinausginge, wird gezaehlt und abgefangen. Der
+  // Bedienablauf bekommt eine festgelegte Testantwort statt einer echten.
+  const ablauf = eintrag.bedienablauf;
+  const raus = [];
+  await page.route('**', async (route) => {
+    const url = route.request().url();
+    if (url.startsWith('file://')) return route.continue();
+    raus.push(url);
+    if (ablauf && ablauf.endpunkt && url.indexOf(ablauf.endpunkt) >= 0) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(ablauf.testantwort_json || {})
+      });
+    }
+    return route.abort();
+  });
+
   const konsole = [];
   page.on('pageerror', e => konsole.push('Skriptfehler: ' + e.message));
   page.on('console', m => { if (m.type() === 'error') konsole.push('Konsole: ' + m.text()); });
@@ -177,6 +197,82 @@ const befund = (s) => { console.log('   BEFUND  ' + s); befunde.push(s); };
       if (sam.an && sam.text.indexOf(erwartet) >= 0 && sam.aus)
         zeile('   in Ordnung, Leiste schaltet an und aus, Zaehler meldet \u201e' + sam.text + '\u201c');
     }
+  }
+
+  // --- 5b Pflichtsichtbare Bedienteile, nur wenn das Profil sie nennt -----
+  zeile('\n5b Bedienteile im Ausgangszustand');
+  const pflicht = eintrag.pflichtsichtbar || [];
+  if (!pflicht.length) {
+    zeile('   uebersprungen, das Profil nennt keine pflichtsichtbaren Bedienteile');
+  } else {
+    const p1 = await page.evaluate((liste) => liste.map(sel => {
+      const e = document.querySelector(sel);
+      if (!e) return { sel, da: false };
+      const cs = getComputedStyle(e); const r = e.getBoundingClientRect();
+      const d = e.closest('details');
+      return { sel, da: true,
+        sichtbar: e.offsetParent !== null && cs.display !== 'none' && cs.visibility !== 'hidden'
+                  && cs.opacity !== '0' && r.width > 0 && r.height > 0,
+        imFenster: !!(d && !d.open) };
+    }), pflicht);
+    p1.forEach(x => {
+      if (!x.da) befund('das Profil verlangt ' + x.sel + ', die Seite hat es nicht');
+      else if (x.imFenster) befund(x.sel + ' steckt in einem geschlossenen Fenster');
+      else if (!x.sichtbar) befund(x.sel + ' ist im Ausgangszustand nicht sichtbar');
+    });
+    if (p1.every(x => x.da && x.sichtbar && !x.imFenster))
+      zeile('   in Ordnung, ' + p1.length + ' Bedienteile sichtbar: ' + pflicht.join(', '));
+  }
+
+  // --- 5c Bedienablauf nach einer Interaktion ----------------------------
+  zeile('\n5c Bedienablauf nach der Interaktion');
+  if (!ablauf) {
+    zeile('   uebersprungen, das Profil nennt keinen Bedienablauf');
+  } else {
+    const vorher = raus.length;
+    const vorZustand = await page.evaluate((c) => {
+      const a = document.querySelector(c.antwort);
+      if (!a) return { fehlt: true };
+      const cs = getComputedStyle(a); const r = a.getBoundingClientRect();
+      return { sichtbar: a.offsetParent !== null && cs.display !== 'none' && r.height > 0,
+               text: (a.textContent || '').trim().slice(0, 200) };
+    }, ablauf);
+    if (vorZustand.fehlt) befund('das Profil verlangt ' + ablauf.antwort + ', die Seite hat es nicht');
+    else {
+      await page.fill(ablauf.feld, ablauf.testfrage || 'Pruefeingabe');
+      await page.click(ablauf.knopf);
+      let nach = null;
+      for (let i = 0; i < 40; i++) {
+        await page.waitForTimeout(150);
+        nach = await page.evaluate((c) => {
+          const a = document.querySelector(c.antwort);
+          const cs = getComputedStyle(a); const r = a.getBoundingClientRect();
+          return { sichtbar: a.offsetParent !== null && cs.display !== 'none' && r.height > 0,
+                   text: (a.textContent || '').trim() };
+        }, ablauf);
+        if (nach.text.indexOf(ablauf.testantwort) >= 0) break;
+      }
+      if (!nach.sichtbar) befund(ablauf.antwort + ' wird nach der Interaktion nicht sichtbar');
+      if (nach.text.indexOf(ablauf.testantwort) < 0)
+        befund(ablauf.antwort + ' enthaelt die Testantwort nicht. Vorgefunden: „'
+               + nach.text.slice(0, 120) + '“');
+      const neu = raus.slice(vorher);
+      const fremd = neu.filter(u => !(ablauf.endpunkt && u.indexOf(ablauf.endpunkt) >= 0));
+      if (fremd.length) befund(fremd.length + ' Anfrage(n) wollten ins Netz, erste: ' + fremd[0]);
+      if (nach.sichtbar && nach.text.indexOf(ablauf.testantwort) >= 0 && !fremd.length)
+        zeile('   in Ordnung, Knopf loest aus, ' + ablauf.antwort
+              + ' wird sichtbar und traegt die Testantwort, nichts ging ins Netz');
+    }
+  }
+
+  // --- 5d Keine echte Anfrage nach draussen -------------------------------
+  zeile('\n5d Netzverkehr');
+  const echt = raus.filter(u => !(ablauf && ablauf.endpunkt && u.indexOf(ablauf.endpunkt) >= 0));
+  if (echt.length) {
+    befund(echt.length + ' Anfrage(n) nach draussen, abgefangen. Erste: ' + echt[0]);
+  } else {
+    zeile('   in Ordnung, keine Anfrage nach draussen. '
+          + (ablauf ? 'Der Endpunkt des Bedienablaufs wurde abgefangen und beantwortet.' : ''));
   }
 
   // --- 6 Mobile Breite ---------------------------------------------------
