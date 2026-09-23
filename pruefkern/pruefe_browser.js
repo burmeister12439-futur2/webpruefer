@@ -55,6 +55,7 @@ const befund = (s) => { console.log('   BEFUND  ' + s); befunde.push(s); };
   // Bedienablauf bekommt eine festgelegte Testantwort statt einer echten.
   const ablauf = eintrag.bedienablauf;
   const raus = [];
+  const abgebrochen = [];
   await page.route('**', async (route) => {
     const url = route.request().url();
     if (url.startsWith('file://')) return route.continue();
@@ -66,6 +67,7 @@ const befund = (s) => { console.log('   BEFUND  ' + s); befunde.push(s); };
         body: JSON.stringify(ablauf.testantwort_json || {})
       });
     }
+    abgebrochen.push(url);
     return route.abort();
   });
 
@@ -82,8 +84,25 @@ const befund = (s) => { console.log('   BEFUND  ' + s); befunde.push(s); };
   zeile('='.repeat(74));
 
   zeile('\n1 Konsole und Skriptfehler');
-  konsole.forEach(befund);
-  if (!konsole.length) zeile('   in Ordnung, keine Fehler in der Konsole');
+  // Der Pruefer bricht jede Anfrage nach draussen selbst ab. Der Browser meldet
+  // diesen Abbruch als Konsolenfehler. Das ist kein Fehler der Seite, sondern
+  // die Wirkung der Netzsperre; der Sachverhalt selbst steht in Abschnitt 5d.
+  // Unterdrueckt wird hoechstens so viel, wie der Pruefer abgebrochen hat, und
+  // die Zahl wird ausgewiesen. Keine stille Ausnahme.
+  let selbstverursacht = 0;
+  const echteKonsole = [];
+  for (const m of konsole) {
+    if (selbstverursacht < abgebrochen.length && /Failed to load resource: net::ERR_FAILED/.test(m)) {
+      selbstverursacht++;
+      continue;
+    }
+    echteKonsole.push(m);
+  }
+  echteKonsole.forEach(befund);
+  if (selbstverursacht) {
+    zeile('   Hinweis: ' + selbstverursacht + ' Konsolenmeldung(en) stammen aus Anfragen, die der Pruefer selbst abgebrochen hat, siehe 5d');
+  }
+  if (!echteKonsole.length) zeile('   in Ordnung, keine Fehler in der Konsole');
 
   // --- 2 Berechnete Sichtbarkeit --------------------------------------
   zeile('\n2 Berechnete Sichtbarkeit der Antwortfelder');
