@@ -1,0 +1,19 @@
+#!/bin/sh
+# Haken vor jedem Push. Installiert mit:
+#   cp vorlage/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+#
+# Der Haken ruft nur pruefen.sh des Projekts auf und entscheidet nichts selbst.
+# Wichtig: Ein lokaler Haken wird nicht mit dem Repositorium uebertragen. Er ist
+# eine Bequemlichkeit, keine dauerhafte Absicherung. Die dauerhafte Absicherung
+# ist der Aufruf von pruefen.sh im Upload- oder Release-Schritt des Projekts.
+wurzel=$(git rev-parse --show-toplevel) || exit 1
+"$wurzel/pruefen.sh"
+if [ $? -ne 0 ]; then
+  echo ""
+  echo "PUSH ANGEHALTEN. Siehe die Befunde oben."
+  echo "Nichts ist hochgeladen worden. Der Commit bleibt stehen."
+  exit 1
+fi
+echo ""
+echo "Pruefung bestanden. Push laeuft."
+exit 0

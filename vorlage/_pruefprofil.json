@@ -1,0 +1,23 @@
+{
+  "_zweck": "Vorlage. Je Projekt eine solche Datei im Projektordner. Sie sagt, welche Seiten geprueft werden, was auf ihnen stehen muss und mit welcher Fassung des gemeinsamen Pruefkerns geprueft wird.",
+  "profil_fassung": 1,
+  "projekt": "<name des projekts>",
+  "pruefer": {
+    "repo": "webpruefer",
+    "fassung": "<die zwoelf ersten Zeichen des Kern-Commits, mit dem geprueft wird>",
+    "_hinweis": "Die Fassung wird bewusst gehoben, nicht nebenbei. pruefen.sh bricht laut ab, wenn der vorgefundene Kern eine andere traegt."
+  },
+  "seiten": [
+    {
+      "datei": "index.html",
+      "browserpruefung": "voll",
+      "_browserpruefung_werte": "voll bei Formularen und Diagrammen, schlank bei reinen Textseiten, keine nur mit Begruendung",
+      "protokoll": "_werkzeug/browserpruefung.json",
+      "antwortfelder_gesamt": 0,
+      "antwortfelder_je_abschnitt": {},
+      "fragenbloecke_je_abschnitt": {},
+      "bedienfelder": {},
+      "_ab_schritt_2": "pflichtsichtbar und verhalten_nach_interaktion kommen mit klaus-burmeister.de dazu. Sichtbarkeit im Ausgangszustand und richtiges Verhalten nach einer Interaktion sind zweierlei und duerfen nicht in einen Topf."
+    }
+  ]
+}
