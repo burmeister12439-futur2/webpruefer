@@ -286,11 +286,26 @@ const befund = (s) => { console.log('   BEFUND  ' + s); befunde.push(s); };
 
   // --- 5d Keine echte Anfrage nach draussen -------------------------------
   zeile('\n5d Netzverkehr');
-  const echt = raus.filter(u => !(ablauf && ablauf.endpunkt && u.indexOf(ablauf.endpunkt) >= 0));
-  if (echt.length) {
-    befund(echt.length + ' Anfrage(n) nach draussen, abgefangen. Erste: ' + echt[0]);
+  // Manche Seiten holen von aussen etwas, das dort erklaertermassen hingehoert,
+  // etwa eine im Datenschutztext ausgewiesene Reichweitenmessung. Solche
+  // Anfragen stehen mit Muster und Begruendung im Profil unter
+  // "erlaubte_aussenanfragen". Sie werden trotzdem abgefangen, nicht
+  // durchgelassen, und sie werden namentlich aufgefuehrt. Erlaubt heisst hier
+  // erklaert, nicht unsichtbar. Alles, was nicht dort steht, bleibt ein Befund.
+  const erlaubte = eintrag.erlaubte_aussenanfragen || [];
+  const trefferErlaubt = (u) => erlaubte.find(e => u.indexOf(e.muster) >= 0);
+  const ohneAblauf = raus.filter(u => !(ablauf && ablauf.endpunkt && u.indexOf(ablauf.endpunkt) >= 0));
+  const benannt = ohneAblauf.filter(u => trefferErlaubt(u));
+  const unerwartet = ohneAblauf.filter(u => !trefferErlaubt(u));
+  benannt.forEach(u => {
+    const e = trefferErlaubt(u);
+    zeile('   benannt und abgefangen: ' + u);
+    zeile('     Grund laut Profil: ' + (e.grund || 'ohne Begruendung im Profil'));
+  });
+  if (unerwartet.length) {
+    befund(unerwartet.length + ' unerwartete Anfrage(n) nach draussen, abgefangen. Erste: ' + unerwartet[0]);
   } else {
-    zeile('   in Ordnung, keine Anfrage nach draussen. '
+    zeile('   in Ordnung, keine unerwartete Anfrage nach draussen. '
           + (ablauf ? 'Der Endpunkt des Bedienablaufs wurde abgefangen und beantwortet.' : ''));
   }
 
