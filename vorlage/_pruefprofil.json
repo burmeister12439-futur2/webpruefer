@@ -17,7 +17,21 @@
       "antwortfelder_je_abschnitt": {},
       "fragenbloecke_je_abschnitt": {},
       "bedienfelder": {},
-      "_ab_schritt_2": "pflichtsichtbar und verhalten_nach_interaktion kommen mit klaus-burmeister.de dazu. Sichtbarkeit im Ausgangszustand und richtiges Verhalten nach einer Interaktion sind zweierlei und duerfen nicht in einen Topf."
+      "_ab_schritt_2": "pflichtsichtbar und verhalten_nach_interaktion kommen mit klaus-burmeister.de dazu. Sichtbarkeit im Ausgangszustand und richtiges Verhalten nach einer Interaktion sind zweierlei und duerfen nicht in einen Topf.",
+      "diagramme": false,
+      "_bedienteile": "Optional. Nur was hier steht, wird im Browser geprueft. Der Kern kennt keine Kennungen eines Projekts.",
+      "tabelle": {
+        "koerper": "#tbody",
+        "suchfeld": "#q",
+        "_was": "eine gefilterte Tabelle, weglassen wenn es keine gibt"
+      },
+      "sammelleiste": {
+        "leiste": "#sammeln",
+        "zaehler": "#sammelzahl",
+        "klasse": "an",
+        "zaehlertext": "1 Antwort",
+        "_was": "eine Leiste, die bei Eingaben angeht, weglassen wenn es keine gibt"
+      }
     }
   ]
 }

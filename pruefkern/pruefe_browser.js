@@ -2,8 +2,8 @@
  *
  * Ergaenzt pruefe_seite.py um alles, was erst im laufenden Browser sichtbar
  * wird: Konsolenfehler, berechnete Sichtbarkeit (auch Verstecken per
- * CSS-Klasse), die mobile Breite, die vier Diagramme, den Quellen-Explorer
- * und die Sammelleiste.
+ * CSS-Klasse), die mobile Breite und, sofern das Pruefprofil sie nennt, die
+ * Diagramme, eine gefilterte Tabelle und eine Sammelleiste.
  *
  * Braucht Playwright und laeuft deshalb dort, wo Playwright liegt, nicht auf
  * dem Rechner. Ergebnis ist ein Pruefprotokoll mit dem SHA-256 der geprueften
@@ -20,8 +20,20 @@ const crypto = require('crypto');
 const { chromium } = require(process.env.PW || 'playwright');
 
 const seite = process.argv[2];
-const protokoll = process.argv[3] || null;
+const profilPfad = process.argv[3];
+const protokoll = process.argv[4] || null;
 if (!seite || !fs.existsSync(seite)) { console.error('Seite fehlt: ' + seite); process.exit(1); }
+if (!profilPfad || !fs.existsSync(profilPfad)) {
+  console.error('Pruefprofil fehlt: ' + profilPfad);
+  console.error('Aufruf: pruefe_browser.js <seite.html> <_pruefprofil.json> [protokoll.json]');
+  process.exit(1);
+}
+// Der Kern kennt kein Projekt. Was auf dieser Seite zu pruefen ist, steht im
+// Profil des Projekts: welche Bedienteile es gibt und wie sie heissen.
+const profil = JSON.parse(fs.readFileSync(profilPfad, 'utf-8'));
+const eintrag = (profil.seiten || []).find(e => path.basename(e.datei || '') === path.basename(seite))
+  || (profil.seiten || [])[0] || {};
+const umfang = eintrag.browserpruefung || 'voll';
 const sha = crypto.createHash('sha256').update(fs.readFileSync(seite)).digest('hex');
 // Der Pruefer haelt auch seinen eigenen SHA fest. Sonst bliebe ein altes gruenes
 // Protokoll gueltig, waehrend sich der Pruefer darunter geaendert hat.
@@ -79,6 +91,9 @@ const befund = (s) => { console.log('   BEFUND  ' + s); befunde.push(s); };
 
   // --- 3 Diagramme ------------------------------------------------------
   zeile('\n3 Diagramme');
+  if (umfang !== 'voll' || eintrag.diagramme === false) {
+    zeile('   uebersprungen, das Profil verlangt fuer diese Seite keine Diagrammpruefung');
+  } else {
   const charts = await page.evaluate(() => {
     return [...document.querySelectorAll('canvas')].map(c => {
       const r = c.getBoundingClientRect();
@@ -98,60 +113,70 @@ const befund = (s) => { console.log('   BEFUND  ' + s); befunde.push(s); };
   });
   if (charts.length && charts.every(c => c.breite >= 10 && c.hoehe >= 10 && c.gemalt !== false))
     zeile('   in Ordnung, ' + charts.length + ' Diagramme gezeichnet: ' + charts.map(c => c.id).join(', '));
+  }
 
-  // --- 4 Quellen-Explorer ----------------------------------------------
-  zeile('\n4 Quellen-Explorer');
-  const ex = await page.evaluate(async () => {
-    const tb = document.getElementById('tbody');
-    if (!tb) return { fehlt: true };
-    const vorher = tb.querySelectorAll('tr').length;
-    const q = document.getElementById('q');
-    if (!q) return { vorher, ohneSuche: true };
-    q.value = 'zzzqqqxyz';
-    q.dispatchEvent(new Event('input', { bubbles: true }));
-    await new Promise(r => setTimeout(r, 400));
-    const leer = tb.querySelectorAll('tr').length;
-    q.value = '';
-    q.dispatchEvent(new Event('input', { bubbles: true }));
-    await new Promise(r => setTimeout(r, 400));
-    const zurueck = tb.querySelectorAll('tr').length;
-    return { vorher, leer, zurueck };
-  });
-  if (ex.fehlt) befund('der Quellen-Explorer hat keine Tabelle #tbody');
-  else if (ex.ohneSuche) befund('der Quellen-Explorer hat kein Suchfeld #q');
-  else {
-    if (!ex.vorher) befund('der Quellen-Explorer zeigt keine einzige Zeile');
-    if (ex.leer >= ex.vorher) befund('die Suche filtert nicht: ' + ex.vorher + ' Zeilen vorher, ' + ex.leer + ' bei einem Suchwort ohne Treffer');
-    if (ex.zurueck !== ex.vorher) befund('nach dem Leeren der Suche stehen ' + ex.zurueck + ' statt ' + ex.vorher + ' Zeilen');
-    if (ex.vorher && ex.leer < ex.vorher && ex.zurueck === ex.vorher)
-      zeile('   in Ordnung, ' + ex.vorher + ' Zeilen, Suche filtert auf ' + ex.leer + ' und stellt wieder her');
+  // --- 4 Gefilterte Tabelle, nur wenn das Profil eine nennt --------------
+  zeile('\n4 Gefilterte Tabelle');
+  const tab = eintrag.tabelle;
+  if (!tab || !tab.koerper || !tab.suchfeld) {
+    zeile('   uebersprungen, das Profil nennt fuer diese Seite keine gefilterte Tabelle');
+  } else {
+    const ex = await page.evaluate(async (t) => {
+      const tb = document.querySelector(t.koerper);
+      if (!tb) return { fehlt: true };
+      const vorher = tb.querySelectorAll('tr').length;
+      const q = document.querySelector(t.suchfeld);
+      if (!q) return { vorher, ohneSuche: true };
+      q.value = 'zzzqqqxyz';
+      q.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 400));
+      const leer = tb.querySelectorAll('tr').length;
+      q.value = '';
+      q.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 400));
+      return { vorher, leer, zurueck: tb.querySelectorAll('tr').length };
+    }, tab);
+    if (ex.fehlt) befund('die im Profil genannte Tabelle ' + tab.koerper + ' gibt es nicht');
+    else if (ex.ohneSuche) befund('das im Profil genannte Suchfeld ' + tab.suchfeld + ' gibt es nicht');
+    else {
+      if (!ex.vorher) befund('die Tabelle zeigt keine einzige Zeile');
+      if (ex.leer >= ex.vorher) befund('die Suche filtert nicht: ' + ex.vorher + ' Zeilen vorher, ' + ex.leer + ' bei einem Suchwort ohne Treffer');
+      if (ex.zurueck !== ex.vorher) befund('nach dem Leeren der Suche stehen ' + ex.zurueck + ' statt ' + ex.vorher + ' Zeilen');
+      if (ex.vorher && ex.leer < ex.vorher && ex.zurueck === ex.vorher)
+        zeile('   in Ordnung, ' + ex.vorher + ' Zeilen, Suche filtert auf ' + ex.leer + ' und stellt wieder her');
+    }
   }
 
   // --- 5 Sammelleiste ---------------------------------------------------
   zeile('\n5 Sammelleiste');
-  const sam = await page.evaluate(async () => {
-    const t = document.querySelector('textarea[data-frage]');
-    const bar = document.getElementById('sammeln');
-    const z = document.getElementById('sammelzahl');
-    if (!t || !bar || !z) return { fehlt: true, t: !!t, bar: !!bar, z: !!z };
-    const vorher = bar.className;
-    t.value = 'Pruefeingabe';
-    t.dispatchEvent(new Event('input', { bubbles: true }));
-    await new Promise(r => setTimeout(r, 200));
-    const an = bar.classList.contains('an');
-    const text = z.textContent;
-    t.value = '';
-    t.dispatchEvent(new Event('input', { bubbles: true }));
-    await new Promise(r => setTimeout(r, 200));
-    return { vorher, an, text, aus: !bar.classList.contains('an') };
-  });
-  if (sam.fehlt) befund('Sammelleiste unvollstaendig: Feld ' + sam.t + ', Leiste ' + sam.bar + ', Zaehler ' + sam.z);
-  else {
-    if (!sam.an) befund('die Sammelleiste geht bei einer Eingabe nicht an');
-    if (!/1 Antwort/.test(sam.text)) befund('der Zaehler zeigt „' + sam.text + '“ statt „1 Antwort“');
-    if (!sam.aus) befund('die Sammelleiste geht nach dem Leeren nicht wieder aus');
-    if (sam.an && /1 Antwort/.test(sam.text) && sam.aus)
-      zeile('   in Ordnung, Leiste schaltet an und aus, Zaehler meldet „' + sam.text + '“');
+  const sl = eintrag.sammelleiste;
+  if (!sl || !sl.leiste || !sl.zaehler) {
+    zeile('   uebersprungen, das Profil nennt fuer diese Seite keine Sammelleiste');
+  } else {
+    const sam = await page.evaluate(async (c) => {
+      const t = document.querySelector(c.feld || 'textarea[data-frage]');
+      const bar = document.querySelector(c.leiste);
+      const z = document.querySelector(c.zaehler);
+      if (!t || !bar || !z) return { fehlt: true, t: !!t, bar: !!bar, z: !!z };
+      t.value = 'Pruefeingabe';
+      t.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 200));
+      const an = bar.classList.contains(c.klasse || 'an');
+      const text = z.textContent;
+      t.value = '';
+      t.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 200));
+      return { an, text, aus: !bar.classList.contains(c.klasse || 'an') };
+    }, sl);
+    if (sam.fehlt) befund('Sammelleiste unvollstaendig: Feld ' + sam.t + ', Leiste ' + sam.bar + ', Zaehler ' + sam.z);
+    else {
+      const erwartet = sl.zaehlertext || '1 Antwort';
+      if (!sam.an) befund('die Sammelleiste geht bei einer Eingabe nicht an');
+      if (sam.text.indexOf(erwartet) < 0) befund('der Zaehler zeigt \u201e' + sam.text + '\u201c statt \u201e' + erwartet + '\u201c');
+      if (!sam.aus) befund('die Sammelleiste geht nach dem Leeren nicht wieder aus');
+      if (sam.an && sam.text.indexOf(erwartet) >= 0 && sam.aus)
+        zeile('   in Ordnung, Leiste schaltet an und aus, Zaehler meldet \u201e' + sam.text + '\u201c');
+    }
   }
 
   // --- 6 Mobile Breite ---------------------------------------------------

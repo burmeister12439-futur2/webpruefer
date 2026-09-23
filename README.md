@@ -26,7 +26,7 @@ hinterlegten Sollbestand gehalten, nicht gegen sich selbst.
 |---|---|
 | `pruefkern/pruefen.py` | Der Ablauf. Liest das Profil, ruft die Prüfungen je Seite. |
 | `pruefkern/pruefe_seite.py` | Statisch: Verschachtelung, Sichtbarkeit ohne Klick, Verdrahtung, Vollständigkeit gegen den Sollbestand, Leseblick, tote Sprungmarken, doppelte Kennungen. |
-| `pruefkern/pruefe_browser.js` | Im Browser: Konsole, berechnete Sichtbarkeit, Diagramme, Explorer, Sammelleiste, mobile Breite. Braucht Playwright. |
+| `pruefkern/pruefe_browser.js` | Im Browser: Konsole, berechnete Sichtbarkeit, mobile Breite, und was das Profil sonst nennt (Diagramme, eine gefilterte Tabelle, eine Sammelleiste). Braucht Playwright. |
 | `pruefkern/pruefe_protokoll.py` | Bindet das Browserprotokoll an Seite und Prüfer, über zwei SHA-256. |
 | `pruefkern/gegenproben.py` | Beschädigt eine Seite absichtlich und weist nach, dass die Prüfung anschlägt. |
 | `vorlage/` | Was ein Projekt bekommt: `pruefen.sh`, `_pruefprofil.json`, `pre-push`. |
@@ -49,6 +49,15 @@ Ausnahmen, kein Durchwinken.
 Im Profil unter `pruefer.fassung` stehen die ersten zwölf Zeichen des
 Kern-Commits. `pruefen.sh` vergleicht sie mit dem vorgefundenen Kern. Eine
 neue Fassung wird bewusst eingetragen, nicht nebenbei übernommen.
+
+## Der Kern kennt kein Projekt
+
+Das ist keine Absichtserklaerung, sondern eine Bedingung. Im Kern steht keine
+einzige Kennung, keine Ueberschrift und kein Pfad aus einem Projekt. Die
+Browserpruefung prueft eine Tabelle oder eine Sammelleiste nur dann, wenn das
+Profil sie nennt, und die Gegenproben leiten ihre Beschaedigungen aus der
+Seite selbst ab. Wo eine Seite das noetige Element nicht hat, entfaellt der
+Fall und wird als entfallen gemeldet, nie als bestanden.
 
 ## Einrichtung auf einem neuen Rechner
 

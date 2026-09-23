@@ -1,122 +1,145 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""gegenproben.py — beschaedigt die Seite absichtlich und prueft, dass es auffaellt.
+"""gegenproben.py — beschaedigt eine Seite absichtlich und prueft, dass es auffaellt.
 
 Eine Pruefung, die nur am heilen Stand gruen zeigt, beweist nichts. Sie koennte
-alles gruen melden. Deshalb wird sie hier gegen fuenf absichtlich beschaedigte
-Kopien gehalten. Jede muss rot werden, jede mit dem richtigen Befund.
+alles gruen melden. Deshalb wird sie hier gegen absichtlich beschaedigte Kopien
+gehalten. Jede muss rot werden, und zwar mit einem Befund. Eine rote Ampel aus
+dem falschen Grund, etwa weil der Pruefer abbricht statt zu pruefen, zaehlt
+nicht.
 
-Die Kopien entstehen in einem Ordner ausserhalb des Projekts und werden nie
-committet. Die geltende Seite wird nicht angefasst.
+Der Kern kennt kein Projekt. Alle Beschaedigungen werden aus der Seite selbst
+abgeleitet, nicht aus festen Zeichenketten eines bestimmten Projekts. Wo eine
+Seite das noetige Element nicht hat, entfaellt der Fall und wird als entfallen
+gemeldet, nicht als bestanden.
 
-Gegenprobe 5 gibt es zweimal: per inline-CSS versteckt faengt die statische
-Pruefung, per CSS-Klasse versteckt faengt nur die Browserpruefung. Die Datei
-fuer den zweiten Fall wird erzeugt und liegen gelassen, damit die
-Browserpruefung sie nachweisen kann.
+Die Kopien entstehen ausserhalb des Projekts und werden nie committet. Die
+geltende Seite wird nicht angefasst.
 
-Aufruf:  python3 _werkzeug/gegenproben.py
-Rueckgabe: 0 wenn jede Gegenprobe rot wurde, sonst 1.
+Aufruf:  gegenproben.py <projektordner> <_pruefprofil.json> [seite.html]
+Rueckgabe: 0 wenn jede anwendbare Gegenprobe rot wurde, sonst 1.
 """
 import io, os, re, subprocess, sys, tempfile
 
 HIER = os.path.dirname(os.path.abspath(__file__))
 PRUEFER = os.path.join(HIER, "pruefe_seite.py")
 
-# Projekt, Profil und Seite kommen von aussen. Der Pruefkern kennt kein Projekt.
-if len(sys.argv) >= 3:
-    PROJEKT = os.path.abspath(sys.argv[1])
-    SOLL = os.path.abspath(sys.argv[2])
-    SEITE = os.path.join(PROJEKT, sys.argv[3] if len(sys.argv) > 3 else "index.html")
-else:
+if len(sys.argv) < 3:
     print("Aufruf: gegenproben.py <projektordner> <_pruefprofil.json> [seite.html]")
     sys.exit(2)
+PROJEKT = os.path.abspath(sys.argv[1])
+PROFIL = os.path.abspath(sys.argv[2])
+SEITE = os.path.join(PROJEKT, sys.argv[3] if len(sys.argv) > 3 else "index.html")
+
+FELD = re.compile(r"<textarea\b[^>]*>.*?</textarea>", re.S | re.I)
+
+
+def felder(s):
+    return list(FELD.finditer(s))
 
 
 def kaputt_1(s):
-    alt = "</div>\n</details>\n<div class=\"fragen\">\n<h4>Fragen zu Abschnitt D</h4>"
-    neu = "<div class=\"fragen\">\n<h4>Fragen zu Abschnitt D</h4>"
-    assert s.count(alt) == 1
-    return s.replace(alt, neu), "das schliessende </details> vor den Fragen zu Abschnitt D entfernt"
+    """Das erste schliessende </details> entfernen. Was dahinter stand, faellt
+    damit in ein zugeklapptes Fenster. Genau der Fehler vom 22.09.2026."""
+    m = re.search(r"</details>", s, re.I)
+    if not m:
+        return None, "entfaellt, die Seite hat kein einziges <details>"
+    return s[:m.start()] + s[m.end():], "das erste schliessende </details> entfernt"
 
 
 def kaputt_2(s):
-    for k in ("1a", "1b"):
-        m = re.search(r'\n<textarea id="f%s" data-frage="%s"[^>]*></textarea>' % (k, k), s)
-        assert m, k
+    """Die ersten beiden Antwortfelder loeschen."""
+    ms = felder(s)
+    if len(ms) < 2:
+        return None, "entfaellt, die Seite hat weniger als zwei Antwortfelder"
+    for m in reversed(ms[:2]):
         s = s[:m.start()] + s[m.end():]
-    return s, "die beiden Antwortfelder f1a und f1b aus Abschnitt B geloescht"
+    return s, "die ersten beiden Antwortfelder geloescht"
 
 
 def kaputt_3(s):
-    alt = ' data-frage="4a"'
-    assert s.count(alt) == 1
-    return s.replace(alt, ""), "dem Feld f4a das data-frage genommen"
+    """Dem ersten Antwortfeld das data-frage nehmen."""
+    for m in felder(s):
+        t = re.search(r'\sdata-frage="[^"]*"', m.group(0))
+        if t:
+            neu = m.group(0)[:t.start()] + m.group(0)[t.end():]
+            return s[:m.start()] + neu + s[m.end():], "dem ersten Antwortfeld das data-frage genommen"
+    return None, "entfaellt, kein Antwortfeld mit data-frage gefunden"
 
 
 def kaputt_4(s):
-    alt = '<label for="f9a">'
-    assert s.count(alt) == 1
-    return s.replace(alt, '<label for="f9a-vertippt">'), "das Label von f9a auf eine falsche id zeigen lassen"
+    """Das Label des ersten Antwortfelds auf eine falsche Kennung zeigen lassen."""
+    for m in felder(s):
+        i = re.search(r'\sid="([^"]+)"', m.group(0))
+        if not i:
+            continue
+        kennung = i.group(1)
+        lab = re.search(r'<label\s+for="%s"' % re.escape(kennung), s)
+        if lab:
+            neu = s[:lab.start()] + '<label for="%s-vertippt"' % kennung + s[lab.end():]
+            return neu, "das Label von %s auf eine falsche Kennung zeigen lassen" % kennung
+    return None, "entfaellt, kein Antwortfeld mit id und passendem Label gefunden"
 
 
 def kaputt_5a(s):
-    alt = '<textarea id="f0a" data-frage="0a" rows="4" style="width:100%'
-    neu = '<textarea id="f0a" data-frage="0a" rows="4" style="display:none;width:100%'
-    assert s.count(alt) == 1
-    return s.replace(alt, neu), "das Antwortfeld in Abschnitt A per inline-CSS versteckt"
+    """Das erste Antwortfeld per inline-CSS verstecken."""
+    ms = felder(s)
+    if not ms:
+        return None, "entfaellt, die Seite hat kein Antwortfeld"
+    m = ms[0]
+    roh = m.group(0)
+    st = re.search(r'\sstyle="', roh)
+    if st:
+        neu = roh[:st.end()] + "display:none;" + roh[st.end():]
+    else:
+        neu = re.sub(r"^<textarea\b", '<textarea style="display:none"', roh, count=1)
+    return s[:m.start()] + neu + s[m.end():], "das erste Antwortfeld per inline-CSS versteckt"
 
 
 def kaputt_5b(s):
-    alt = '<textarea id="f0a" data-frage="0a" '
-    neu = '<textarea id="f0a" data-frage="0a" class="weg" '
-    assert s.count(alt) == 1
-    s = s.replace(alt, neu)
-    assert s.count("</head>") == 1
-    return s.replace("</head>", "<style>.weg{display:none}</style>\n</head>"), \
-           "das Antwortfeld in Abschnitt A per CSS-Klasse versteckt (faengt nur die Browserpruefung)"
+    """Das erste Antwortfeld per CSS-Klasse verstecken. Faengt nur die Browserpruefung."""
+    ms = felder(s)
+    if not ms or "</head>" not in s:
+        return None, "entfaellt, kein Antwortfeld oder kein </head>"
+    m = ms[0]
+    neu = re.sub(r"^<textarea\b", '<textarea class="pruefprobe-weg"', m.group(0), count=1)
+    s = s[:m.start()] + neu + s[m.end():]
+    return s.replace("</head>", "<style>.pruefprobe-weg{display:none}</style>\n</head>", 1), \
+        "das erste Antwortfeld per CSS-Klasse versteckt"
 
 
-# --- Faelle fuer die Browserpruefung ---------------------------------------
-# Die statische Pruefung liest kein Stylesheet und kennt keine Fensterbreite.
-# Diese Faelle gehen deshalb an pruefe_browser.js.
-
-BREITE_TABELLE = ("""
-<section id="probe"><div class="wrap">
-<h2>Gegenprobe</h2>
-<div style="%s">
+TABELLE = """
+<section id="pruefprobe"><div style="%s">
 <table style="min-width:900px;border-collapse:collapse">
-<tr><th>Spalte eins</th><th>Spalte zwei</th><th>Spalte drei</th><th>Spalte vier</th></tr>
+<tr><th>eins</th><th>zwei</th><th>drei</th><th>vier</th></tr>
 <tr><td>Wert</td><td>Wert</td><td>Wert</td><td>Wert am rechten Rand</td></tr>
-</table>
-</div>
-</div></section>
-""")
+</table></div></section>
+"""
 
 
 def kaputt_6(s):
-    """Breite Tabelle in einem bedienbaren Scrollkasten. Muss gruen bleiben."""
-    kasten = BREITE_TABELLE % "overflow-x:auto"
-    return s.replace("</body>", kasten + "</body>", 1), \
-           "eine 900px breite Tabelle in einem Kasten mit overflow-x:auto eingesetzt"
+    if "</body>" not in s:
+        return None, "entfaellt, kein </body>"
+    return s.replace("</body>", TABELLE % "overflow-x:auto" + "</body>", 1), \
+        "eine 900px breite Tabelle in einem Kasten mit overflow-x:auto eingesetzt"
 
 
 def kaputt_7(s):
-    """Dieselbe Tabelle in einem abschneidenden Kasten. Muss rot werden."""
-    kasten = BREITE_TABELLE % "overflow-x:hidden"
-    return s.replace("</body>", kasten + "</body>", 1), \
-           "dieselbe Tabelle in einem Kasten mit overflow-x:hidden eingesetzt"
+    if "</body>" not in s:
+        return None, "entfaellt, kein </body>"
+    return s.replace("</body>", TABELLE % "overflow-x:hidden" + "</body>", 1), \
+        "dieselbe Tabelle in einem Kasten mit overflow-x:hidden eingesetzt"
 
 
-BROWSERFAELLE = [("5b per CSS-Klasse verstecktes Feld", kaputt_5b, "muss rot werden"),
-                 ("6 breite Tabelle im Scrollkasten", kaputt_6, "muss gruen bleiben"),
-                 ("7 dieselbe Tabelle in overflow-x:hidden", kaputt_7, "muss rot werden")]
+STATISCH = [("1 kaputte Verschachtelung", kaputt_1),
+            ("2 zwei entfernte Felder", kaputt_2),
+            ("3 Feld ohne data-frage", kaputt_3),
+            ("4 Feld ohne Label", kaputt_4),
+            ("5a per inline-CSS verstecktes Feld", kaputt_5a)]
 
-
-FAELLE = [("1 kaputte Verschachtelung", kaputt_1),
-          ("2 zwei entfernte Felder", kaputt_2),
-          ("3 Feld ohne data-frage", kaputt_3),
-          ("4 Feld ohne Label", kaputt_4),
-          ("5a per inline-CSS verstecktes Feld", kaputt_5a)]
+IM_BROWSER = [("5b per CSS-Klasse verstecktes Feld", kaputt_5b, "muss rot werden"),
+              ("6 breite Tabelle im Scrollkasten", kaputt_6, "muss gruen bleiben"),
+              ("7 dieselbe Tabelle in overflow-x:hidden", kaputt_7, "muss rot werden")]
 
 
 def main():
@@ -124,21 +147,22 @@ def main():
     ordner = tempfile.mkdtemp(prefix="gegenproben_")
     print("Gegenproben gegen %s" % SEITE)
     print("Kopien liegen in %s, das Projekt bleibt unberuehrt.\n" % ordner)
+
     alle_rot = True
-    for name, fn in FAELLE:
+    for name, fn in STATISCH:
         s, was = fn(roh)
-        # Jede Gegenprobe bekommt einen eigenen Unterordner und behaelt den
-        # Dateinamen der Seite. Sonst findet der Pruefer den Profileintrag nicht
-        # und bricht ab, statt zu pruefen. Ein Abbruch ist kein Befund.
-        unter = os.path.join(ordner, name.split()[0])
-        os.makedirs(unter, exist_ok=True)
-        p = os.path.join(unter, os.path.basename(SEITE))
-        io.open(p, "w", encoding="utf-8").write(s)
-        r = subprocess.run([sys.executable, PRUEFER, p, SOLL],
-                           capture_output=True, text=True)
-        befunde = [l.strip() for l in r.stdout.splitlines() if "BEFUND" in l]
         print("=" * 74)
         print("GEGENPROBE %s" % name)
+        if s is None:
+            print("   %s" % was)
+            print()
+            continue
+        unter = os.path.join(ordner, name.split()[0])
+        os.makedirs(unter, exist_ok=True)
+        pfad = os.path.join(unter, os.path.basename(SEITE))
+        io.open(pfad, "w", encoding="utf-8").write(s)
+        r = subprocess.run([sys.executable, PRUEFER, pfad, PROFIL], capture_output=True, text=True)
+        befunde = [l.strip() for l in r.stdout.splitlines() if "BEFUND" in l]
         print("   beschaedigt: %s" % was)
         for b in befunde[:6]:
             print("   " + b)
@@ -146,11 +170,9 @@ def main():
             print("   ... und %d weitere Befunde" % (len(befunde) - 6))
         schluss = [l for l in r.stdout.splitlines() if l.startswith("NICHT BESTANDEN") or l == "BESTANDEN"]
         print("   Ergebnis: %s" % (schluss[-1] if schluss else "(keine Meldung)"))
-        print("   Rueckgabecode: %d  %s" % (r.returncode, "richtig, der Push wird angehalten"
-                                            if r.returncode == 1 else "FALSCH, das haette rot werden muessen"))
+        print("   Rueckgabecode: %d  %s" % (
+            r.returncode, "richtig, der Push wird angehalten" if r.returncode == 1 else "FALSCH"))
         if r.returncode != 1 or not befunde:
-            # Rueckgabe 1 ohne einen einzigen Befund heisst: der Pruefer ist
-            # abgebrochen, statt zu pruefen. Das ist kein bestandener Nachweis.
             print("   ACHTUNG: kein Befund ausgegeben. Der Pruefer hat nicht geprueft,")
             print("            sondern abgebrochen. Das zaehlt nicht als Nachweis.")
             alle_rot = False
@@ -159,24 +181,28 @@ def main():
     print("=" * 74)
     print("FAELLE FUER DIE BROWSERPRUEFUNG")
     print("   Die statische Pruefung liest kein Stylesheet und kennt keine")
-    print("   Fensterbreite. Diese drei Dateien gehen deshalb an pruefe_browser.js.")
+    print("   Fensterbreite. Diese Dateien gehen an pruefe_browser.js.")
     print()
-    for name, fn, erwartung in BROWSERFAELLE:
-        s2, was = fn(roh)
+    for name, fn, erwartung in IM_BROWSER:
+        s, was = fn(roh)
+        print("   GEGENPROBE %s  (%s)" % (name, erwartung))
+        if s is None:
+            print("      %s" % was)
+            print()
+            continue
         unter = os.path.join(ordner, name.split()[0])
         os.makedirs(unter, exist_ok=True)
         pfad = os.path.join(unter, os.path.basename(SEITE))
-        io.open(pfad, "w", encoding="utf-8").write(s2)
-        print("   GEGENPROBE %s  (%s)" % (name, erwartung))
+        io.open(pfad, "w", encoding="utf-8").write(s)
         print("      veraendert: %s" % was)
-        print("      node _werkzeug/pruefe_browser.js %s" % pfad)
+        print("      node %s %s %s" % (os.path.join(HIER, "pruefe_browser.js"), pfad, PROFIL))
         print()
 
     print("=" * 74)
     if alle_rot:
-        print("ALLE GEGENPROBEN ROT. Die Pruefung greift.")
+        print("ALLE ANWENDBAREN GEGENPROBEN ROT. Die Pruefung greift.")
         return 0
-    print("MINDESTENS EINE GEGENPROBE BLIEB GRUEN. Die Pruefung greift nicht.")
+    print("MINDESTENS EINE GEGENPROBE BLIEB GRUEN ODER BRACH AB. Die Pruefung greift nicht.")
     return 1
 
 
