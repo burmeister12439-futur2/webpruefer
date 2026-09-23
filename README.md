@@ -50,6 +50,43 @@ Im Profil unter `pruefer.fassung` stehen die ersten zwölf Zeichen des
 Kern-Commits. `pruefen.sh` vergleicht sie mit dem vorgefundenen Kern. Eine
 neue Fassung wird bewusst eingetragen, nicht nebenbei übernommen.
 
+## Einrichtung auf einem neuen Rechner
+
+Im Prüfkern:
+
+```
+./einrichten.sh
+```
+
+Das installiert die festgenagelten Abhängigkeiten aus `package-lock.json`
+(Playwright 1.56.0, keine unbestimmte globale Installation) und lädt den
+Chromium Headless Shell, rund 320 MB. Die Browserablage bleibt am Standardort
+des Systems, unter macOS `~/Library/Caches/ms-playwright`, unter Linux
+`~/.cache/ms-playwright`. Sie gehört nicht ins Repositorium.
+
+Unter Linux fehlen dem heruntergeladenen Browser noch Systembibliotheken.
+Playwright nennt den Befehl selbst, er braucht Verwaltungsrechte:
+
+```
+sudo npx playwright install-deps
+```
+
+Unter macOS ist das nicht nötig.
+
+In einem Projekt, das den Kern benutzt:
+
+```
+./einrichten.sh
+```
+
+Das holt den Kern in der Fassung, die das Prüfprofil verlangt, richtet ihn
+ein, setzt den lokalen Git-Haken und lässt einmal prüfen. Ist der Kern als
+Submodul eingebunden, genügt auf einem neuen Rechner:
+
+```
+git submodule update --init
+```
+
 ## Der Haken ist nicht die Absicherung
 
 Ein lokaler `pre-push` wird nicht mit dem Repositorium übertragen. Er ist eine
