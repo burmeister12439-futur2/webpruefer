@@ -127,7 +127,12 @@ def main():
     alle_rot = True
     for name, fn in FAELLE:
         s, was = fn(roh)
-        p = os.path.join(ordner, "gegenprobe_%s.html" % name.split()[0])
+        # Jede Gegenprobe bekommt einen eigenen Unterordner und behaelt den
+        # Dateinamen der Seite. Sonst findet der Pruefer den Profileintrag nicht
+        # und bricht ab, statt zu pruefen. Ein Abbruch ist kein Befund.
+        unter = os.path.join(ordner, name.split()[0])
+        os.makedirs(unter, exist_ok=True)
+        p = os.path.join(unter, os.path.basename(SEITE))
         io.open(p, "w", encoding="utf-8").write(s)
         r = subprocess.run([sys.executable, PRUEFER, p, SOLL],
                            capture_output=True, text=True)
@@ -143,7 +148,11 @@ def main():
         print("   Ergebnis: %s" % (schluss[-1] if schluss else "(keine Meldung)"))
         print("   Rueckgabecode: %d  %s" % (r.returncode, "richtig, der Push wird angehalten"
                                             if r.returncode == 1 else "FALSCH, das haette rot werden muessen"))
-        if r.returncode != 1:
+        if r.returncode != 1 or not befunde:
+            # Rueckgabe 1 ohne einen einzigen Befund heisst: der Pruefer ist
+            # abgebrochen, statt zu pruefen. Das ist kein bestandener Nachweis.
+            print("   ACHTUNG: kein Befund ausgegeben. Der Pruefer hat nicht geprueft,")
+            print("            sondern abgebrochen. Das zaehlt nicht als Nachweis.")
             alle_rot = False
         print()
 
@@ -154,7 +163,9 @@ def main():
     print()
     for name, fn, erwartung in BROWSERFAELLE:
         s2, was = fn(roh)
-        pfad = os.path.join(ordner, "gegenprobe_%s.html" % name.split()[0])
+        unter = os.path.join(ordner, name.split()[0])
+        os.makedirs(unter, exist_ok=True)
+        pfad = os.path.join(unter, os.path.basename(SEITE))
         io.open(pfad, "w", encoding="utf-8").write(s2)
         print("   GEGENPROBE %s  (%s)" % (name, erwartung))
         print("      veraendert: %s" % was)
